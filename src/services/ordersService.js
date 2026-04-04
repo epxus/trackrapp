@@ -112,6 +112,7 @@ export async function recalculateOrderTotals(orderId) {
 
         transaction.update(tableRef, {
           currentTotal: summary.subtotal,
+          total: summary.subtotal,
           status: nextTableStatus,
           updatedAt: serverTimestamp(),
         });
@@ -164,6 +165,7 @@ export async function openOrder({ tableId, people = 1, openedBy, openedByName })
     transaction.update(tableRef, {
       currentOrderId: orderRef.id,
       currentTotal: 0,
+      total: 0,
       status: TABLE_STATUS.OCUPADA,
       openedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -238,6 +240,7 @@ export async function closeOrder({ orderId, paymentMethod, closedBy, closedByNam
     transaction.update(tableRef, {
       currentOrderId: null,
       currentTotal: 0,
+      total: 0,
       status: TABLE_STATUS.LIBRE,
       openedAt: null,
       updatedAt: serverTimestamp(),

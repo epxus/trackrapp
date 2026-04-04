@@ -59,3 +59,26 @@ export function matchesKitchenItemFilters(item, filters = {}) {
   const stationMatches = station === 'all' || item?.station === station;
   return statusMatches && stationMatches;
 }
+
+export function formatDateTime(value, locale = 'es-MX') {
+  if (!value) return '—';
+
+  let date = null;
+
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value?.toDate === 'function') {
+    date = value.toDate();
+  } else if (typeof value?.seconds === 'number') {
+    const millis = (value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1_000_000);
+    date = new Date(millis);
+  } else {
+    date = new Date(value);
+  }
+
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleString(locale);
+}

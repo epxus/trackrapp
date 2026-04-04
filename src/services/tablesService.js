@@ -48,6 +48,7 @@ export async function createTable({ number, seats = 4, name, zone = 'Principal' 
     status: TABLE_STATUS.LIBRE,
     currentOrderId: null,
     currentTotal: 0,
+    total: 0,
     openedAt: null,
     updatedAt: serverTimestamp(),
   };
@@ -70,6 +71,7 @@ export async function resetTable(tableId) {
     status: TABLE_STATUS.LIBRE,
     currentOrderId: null,
     currentTotal: 0,
+    total: 0,
     openedAt: null,
   });
 }

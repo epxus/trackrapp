@@ -17,7 +17,7 @@ export function TableCard({ table, selected, onPress }) {
 
       <View style={styles.metricsRow}>
         <Metric title="Asientos" value={String(table.seats)} />
-        <Metric title="Cuenta" value={formatCurrency(table.currentTotal || 0)} />
+        <Metric title="Cuenta" value={formatCurrency(table.currentTotal ?? table.total ?? 0)} />
       </View>
 
       <Text style={styles.note}>{table.openedAt ? 'Con actividad reciente' : 'Disponible'}</Text>

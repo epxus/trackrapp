@@ -9,7 +9,7 @@ import { SectionHeader } from '../components/SectionHeader.js';
 import { StatCard } from '../components/StatCard.js';
 import { COLORS } from '../constants/colors.js';
 import { useAppData } from '../context/AppDataContext.js';
-import { formatCurrency } from '../utils/orderUtils.js';
+import { formatCurrency, formatDateTime } from '../utils/orderUtils.js';
 
 function DetailRow({ label, value }) {
   return (
@@ -88,7 +88,7 @@ export default function SalesScreen() {
                   <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
                 </View>
               </View>
-              <Text style={styles.saleDate}>{new Date(sale.closedAt).toLocaleString('es-MX')}</Text>
+              <Text style={styles.saleDate}>{formatDateTime(sale.closedAt)}</Text>
             </Pressable>
           ))
         ) : (
@@ -117,7 +117,7 @@ export default function SalesScreen() {
                   <DetailRow label="Total" value={formatCurrency(selectedSale.total)} />
                   <DetailRow label="Método" value={selectedSale.paymentMethod} />
                   <DetailRow label="Mesa" value={`Mesa ${selectedSale.tableNumber}`} />
-                  <DetailRow label="Fecha" value={new Date(selectedSale.closedAt).toLocaleString('es-MX')} />
+                  <DetailRow label="Fecha" value={formatDateTime(selectedSale.closedAt)} />
                   <DetailRow label="Orden" value={selectedSale.orderId || '—'} />
                 </View>
 

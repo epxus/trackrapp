@@ -124,6 +124,7 @@ export function AppDataProvider({ children }) {
               ...entry,
               currentOrderId: orderId,
               currentTotal: 0,
+              total: 0,
               status: TABLE_STATUS.OCUPADA,
               openedAt,
             }
@@ -223,6 +224,7 @@ export function AppDataProvider({ children }) {
               ...entry,
               currentOrderId: order.id,
               currentTotal: summary.subtotal,
+              total: summary.subtotal,
               status: getTableStatusLabel(entry, { ...order, items: nextItems, status: nextStatus }),
               openedAt: entry.openedAt || new Date().toISOString(),
             }
@@ -346,7 +348,7 @@ export function AppDataProvider({ children }) {
     setTables((currentTables) =>
       currentTables.map((entry) =>
         entry.id === table.id
-          ? { ...entry, status: TABLE_STATUS.LIBRE, currentOrderId: null, currentTotal: 0, openedAt: null }
+          ? { ...entry, status: TABLE_STATUS.LIBRE, currentOrderId: null, currentTotal: 0, total: 0, openedAt: null }
           : entry
       )
     );
@@ -599,6 +601,7 @@ export function AppDataProvider({ children }) {
             ? {
                 ...entry,
                 currentTotal: summary.subtotal,
+                total: summary.subtotal,
                 status: getTableStatusLabel(entry, { ...order, items: order.items ?? [], status: nextStatus }),
               }
             : entry
@@ -606,6 +609,36 @@ export function AppDataProvider({ children }) {
       );
     }
   };
+
+
+  const tablesWithComputedTotals = useMemo(() => {
+    return tables.map((table) => {
+      const activeOrder = orders.find(
+        (order) =>
+          order.tableId === table.id &&
+          order.status !== ORDER_STATUS.CLOSED &&
+          order.status !== ORDER_STATUS.CANCELLED
+      );
+
+      if (!activeOrder) {
+        return {
+          ...table,
+          currentTotal: Number(table.currentTotal ?? table.total ?? 0),
+        };
+      }
+
+      const summary = calculateOrderSummary(activeOrder.items ?? []);
+      const derivedStatus = getTableStatusLabel(table, activeOrder);
+
+      return {
+        ...table,
+        currentOrderId: activeOrder.id,
+        currentTotal: summary.subtotal,
+        total: summary.subtotal,
+        status: derivedStatus,
+      };
+    });
+  }, [tables, orders]);
 
   const seedDemoData = async () => {
     if (!hasFirebaseConfig) {
@@ -623,7 +656,7 @@ export function AppDataProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      tables,
+      tables: tablesWithComputedTotals,
       orders,
       menuCategories,
       menuItems,
@@ -648,7 +681,7 @@ export function AppDataProvider({ children }) {
       refreshOrderTotals,
       seedDemoData,
     }),
-    [tables, orders, menuCategories, menuItems, sales, loadingData, user]
+    [tablesWithComputedTotals, orders, menuCategories, menuItems, sales, loadingData, user]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
