@@ -4,7 +4,7 @@ import { COLORS } from '../constants/colors.js';
 import { formatCurrency } from '../utils/orderUtils.js';
 import { StatusPill } from './StatusPill.js';
 
-export function OrderItemCard({ item, actionLabel, onPressAction }) {
+export function OrderItemCard({ item, actionLabel, onPressAction, actionDisabled = false, actionTone = 'dark' }) {
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -22,8 +22,12 @@ export function OrderItemCard({ item, actionLabel, onPressAction }) {
         </View>
       </View>
       {actionLabel ? (
-        <Pressable onPress={onPressAction} style={styles.button}>
-          <Text style={styles.buttonText}>{actionLabel}</Text>
+        <Pressable
+          onPress={onPressAction}
+          style={[styles.button, actionTone === 'light' ? styles.buttonLight : null, actionDisabled ? styles.buttonDisabled : null]}
+          disabled={actionDisabled}
+        >
+          <Text style={[styles.buttonText, actionTone === 'light' ? styles.buttonTextLight : null]}>{actionLabel}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -88,9 +92,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  buttonLight: {
+    backgroundColor: COLORS.surfaceMuted,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonText: {
     color: COLORS.white,
     fontWeight: '700',
     fontSize: 12,
+  },
+  buttonTextLight: {
+    color: COLORS.text,
   },
 });

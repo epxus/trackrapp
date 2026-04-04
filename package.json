@@ -1,5 +1,5 @@
 {
-  "name": "pedidoflow-expo",
+  "name": "trackerapp-expo",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
@@ -8,6 +8,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web",
     "test": "node --test"
   },
   "dependencies": {

@@ -36,6 +36,7 @@ export default function OperationScreen() {
     openTableAccount,
     addMenuItemToTable,
     closeTableAccount,
+    markOrderItemAsServed,
   } = useAppData();
 
   const [selectedTableId, setSelectedTableId] = useState(null);
@@ -221,6 +222,19 @@ export default function OperationScreen() {
     }
   };
 
+  const handleMarkServed = async (itemId) => {
+    if (!selectedOrder?.id) return;
+
+    try {
+      setBusyAction(true);
+      await markOrderItemAsServed(selectedOrder.id, itemId);
+    } catch (error) {
+      Alert.alert('No se pudo marcar como entregado', error.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
   if (loadingData) {
     return (
       <ScreenContainer scroll={false}>
@@ -318,9 +332,23 @@ export default function OperationScreen() {
                 <SummaryCell label="Progreso" value={`${getOrderProgress(selectedOrder.items)}%`} />
               </View>
 
+              <InfoCard
+                tone="neutral"
+                title="Flujo de entrega"
+                description="Cocina marca los productos como listos y desde esta vista el mesero confirma la entrega final en mesa."
+              />
+
               <View style={styles.listBlock}>
                 {selectedOrder.items.length ? (
-                  selectedOrder.items.map((item) => <OrderItemCard key={item.id} item={item} />)
+                  selectedOrder.items.map((item) => (
+                    <OrderItemCard
+                      key={item.id}
+                      item={item}
+                      actionLabel={item.status === 'ready' ? (busyAction ? 'Actualizando...' : 'Marcar entregado') : undefined}
+                      actionDisabled={busyAction || item.status !== 'ready'}
+                      onPressAction={() => handleMarkServed(item.id)}
+                    />
+                  ))
                 ) : (
                   <EmptyState title="Sin productos" description="Esta cuenta está abierta, pero todavía no tiene productos." />
                 )}

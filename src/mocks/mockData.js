@@ -1,3 +1,10 @@
+export const mockMenuCategories = [
+  { id: 'cat_1', name: 'Hamburguesas', active: true },
+  { id: 'cat_2', name: 'Entradas', active: true },
+  { id: 'cat_3', name: 'Bebidas', active: true },
+  { id: 'cat_4', name: 'Postres', active: true },
+];
+
 export const mockMenuItems = [
   { id: 'menu_1', name: 'Hamburguesa clásica', category: 'Hamburguesas', price: 90, available: true, station: 'Cocina caliente' },
   { id: 'menu_2', name: 'Hamburguesa doble', category: 'Hamburguesas', price: 120, available: true, station: 'Cocina caliente' },
@@ -78,9 +85,73 @@ export const mockTables = [
 ];
 
 export const mockSales = [
-  { id: 'sale_1', orderId: 'closed_1', tableId: 'table_1', tableNumber: 1, total: 290, paymentMethod: 'Tarjeta', closedAt: '2026-03-31T18:54:00.000Z' },
-  { id: 'sale_2', orderId: 'closed_6', tableId: 'table_6', tableNumber: 6, total: 420, paymentMethod: 'Efectivo', closedAt: '2026-03-31T18:41:00.000Z' },
-  { id: 'sale_3', orderId: 'closed_3', tableId: 'table_3', tableNumber: 3, total: 185, paymentMethod: 'Transferencia', closedAt: '2026-03-31T18:22:00.000Z' },
-  { id: 'sale_4', orderId: 'closed_5', tableId: 'table_5', tableNumber: 5, total: 510, paymentMethod: 'Tarjeta', closedAt: '2026-03-31T17:59:00.000Z' },
-  { id: 'sale_5', orderId: 'closed_2', tableId: 'table_2', tableNumber: 2, total: 240, paymentMethod: 'Efectivo', closedAt: '2026-03-31T17:30:00.000Z' }
+  {
+    id: 'sale_1',
+    orderId: 'closed_1',
+    tableId: 'table_1',
+    tableNumber: 1,
+    total: 290,
+    paymentMethod: 'Tarjeta',
+    closedAt: '2026-03-31T18:54:00.000Z',
+    itemsSnapshot: [
+      { id: 'sale_1_item_1', name: 'Hamburguesa clásica', quantity: 2, price: 90, station: 'Cocina caliente', notes: 'Una sin cebolla' },
+      { id: 'sale_1_item_2', name: 'Refresco', quantity: 2, price: 35, station: 'Bebidas', notes: 'Sin hielo' },
+      { id: 'sale_1_item_3', name: 'Papas grandes', quantity: 1, price: 40, station: 'Freidora', notes: '' }
+    ]
+  },
+  {
+    id: 'sale_2',
+    orderId: 'closed_6',
+    tableId: 'table_6',
+    tableNumber: 6,
+    total: 420,
+    paymentMethod: 'Efectivo',
+    closedAt: '2026-03-31T18:41:00.000Z',
+    itemsSnapshot: [
+      { id: 'sale_2_item_1', name: 'Hamburguesa doble', quantity: 2, price: 120, station: 'Cocina caliente', notes: '' },
+      { id: 'sale_2_item_2', name: 'Agua mineral', quantity: 2, price: 50, station: 'Bebidas', notes: '' },
+      { id: 'sale_2_item_3', name: 'Papas grandes', quantity: 1, price: 80, station: 'Freidora', notes: 'Extra queso' }
+    ]
+  },
+  {
+    id: 'sale_3',
+    orderId: 'closed_3',
+    tableId: 'table_3',
+    tableNumber: 3,
+    total: 185,
+    paymentMethod: 'Transferencia',
+    closedAt: '2026-03-31T18:22:00.000Z',
+    itemsSnapshot: [
+      { id: 'sale_3_item_1', name: 'Brownie', quantity: 1, price: 65, station: 'Postres', notes: '' },
+      { id: 'sale_3_item_2', name: 'Limonada', quantity: 2, price: 45, station: 'Bebidas', notes: '' },
+      { id: 'sale_3_item_3', name: 'Papas grandes', quantity: 1, price: 30, station: 'Freidora', notes: '' }
+    ]
+  },
+  {
+    id: 'sale_4',
+    orderId: 'closed_5',
+    tableId: 'table_5',
+    tableNumber: 5,
+    total: 510,
+    paymentMethod: 'Tarjeta',
+    closedAt: '2026-03-31T17:59:00.000Z',
+    itemsSnapshot: [
+      { id: 'sale_4_item_1', name: 'Hamburguesa doble', quantity: 3, price: 120, station: 'Cocina caliente', notes: '' },
+      { id: 'sale_4_item_2', name: 'Agua mineral', quantity: 3, price: 50, station: 'Bebidas', notes: '' }
+    ]
+  },
+  {
+    id: 'sale_5',
+    orderId: 'closed_2',
+    tableId: 'table_2',
+    tableNumber: 2,
+    total: 240,
+    paymentMethod: 'Efectivo',
+    closedAt: '2026-03-31T17:30:00.000Z',
+    itemsSnapshot: [
+      { id: 'sale_5_item_1', name: 'Hamburguesa clásica', quantity: 1, price: 90, station: 'Cocina caliente', notes: '' },
+      { id: 'sale_5_item_2', name: 'Refresco', quantity: 2, price: 35, station: 'Bebidas', notes: '' },
+      { id: 'sale_5_item_3', name: 'Aros de cebolla', quantity: 1, price: 80, station: 'Freidora', notes: '' }
+    ]
+  }
 ];

@@ -52,3 +52,10 @@ export function formatCurrency(value) {
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0));
 }
+
+export function matchesKitchenItemFilters(item, filters = {}) {
+  const { status = 'all', station = 'all' } = filters;
+  const statusMatches = status === 'all' || item?.status === status;
+  const stationMatches = station === 'all' || item?.station === station;
+  return statusMatches && stationMatches;
+}

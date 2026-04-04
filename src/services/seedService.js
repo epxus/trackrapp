@@ -1,11 +1,20 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client.js';
-import { mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
+import { mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
 
 export async function seedFirestoreWithMockData() {
   if (!db) {
     throw new Error('Firebase no está configurado todavía.');
   }
+
+  await Promise.all(
+    mockMenuCategories.map((category) =>
+      setDoc(doc(db, 'menuCategories', category.id), {
+        ...category,
+        updatedAt: serverTimestamp(),
+      })
+    )
+  );
 
   await Promise.all(
     mockMenuItems.map((item) =>

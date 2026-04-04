@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { hasFirebaseConfig } from '../firebase/client.js';
-import { mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
-import { createMenuItem, subscribeToMenuItems, toggleMenuItemAvailability } from '../services/menuService.js';
+import { mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
+import { createMenuCategory, createMenuItem, deleteMenuCategory, renameMenuItemsCategory, subscribeToMenuCategories, subscribeToMenuItems, toggleMenuCategoryAvailability, toggleMenuItemAvailability, updateMenuCategory, updateMenuItem } from '../services/menuService.js';
 import { addOrderItem, updateOrderItemStatus } from '../services/orderItemService.js';
 import { closeOrder, openOrder, recalculateOrderTotals, subscribeToOrders } from '../services/ordersService.js';
 import { subscribeToSales } from '../services/salesService.js';
 import { seedFirestoreWithMockData } from '../services/seedService.js';
-import { subscribeToTables } from '../services/tablesService.js';
+import { createTable, subscribeToTables, updateTable } from '../services/tablesService.js';
 import { useAuth } from './AuthContext.js';
 import { calculateOrderSummary, getTableStatusLabel } from '../utils/orderUtils.js';
 import { ORDER_STATUS, PAYMENT_METHOD, TABLE_STATUS } from '../constants/statuses.js';
@@ -19,6 +19,7 @@ function cloneDemoState() {
   return {
     tables: JSON.parse(JSON.stringify(mockTables)),
     orders: JSON.parse(JSON.stringify(mockOrders)),
+    menuCategories: JSON.parse(JSON.stringify(mockMenuCategories)),
     menuItems: JSON.parse(JSON.stringify(mockMenuItems)),
     sales: JSON.parse(JSON.stringify(mockSales)),
   };
@@ -28,6 +29,7 @@ export function AppDataProvider({ children }) {
   const { user } = useAuth();
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [menuCategories, setMenuCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [sales, setSales] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -36,6 +38,7 @@ export function AppDataProvider({ children }) {
     if (!user) {
       setTables([]);
       setOrders([]);
+      setMenuCategories([]);
       setMenuItems([]);
       setSales([]);
       setLoadingData(false);
@@ -46,6 +49,7 @@ export function AppDataProvider({ children }) {
       const demoState = cloneDemoState();
       setTables(demoState.tables);
       setOrders(demoState.orders);
+      setMenuCategories(demoState.menuCategories);
       setMenuItems(demoState.menuItems);
       setSales(demoState.sales);
       setLoadingData(false);
@@ -60,6 +64,7 @@ export function AppDataProvider({ children }) {
         setLoadingData(false);
       }),
       subscribeToOrders((nextOrders) => setOrders(nextOrders)),
+      subscribeToMenuCategories((nextCategories) => setMenuCategories(nextCategories)),
       subscribeToMenuItems((nextItems) => setMenuItems(nextItems)),
       subscribeToSales((nextSales) => setSales(nextSales)),
     ];
@@ -226,15 +231,12 @@ export function AppDataProvider({ children }) {
     );
   };
 
-  const advanceOrderItemStatus = async (orderId, itemId) => {
+  const setOrderItemStatus = async (orderId, itemId, nextStatus) => {
     const order = orders.find((entry) => entry.id === orderId);
     if (!order) return;
 
     const targetItem = (order.items ?? []).find((item) => item.id === itemId);
-    if (!targetItem) return;
-
-    const currentIndex = ITEM_STATUS_FLOW.indexOf(targetItem.status);
-    const nextStatus = ITEM_STATUS_FLOW[Math.min(currentIndex + 1, ITEM_STATUS_FLOW.length - 1)];
+    if (!targetItem || targetItem.status === nextStatus) return;
 
     if (hasFirebaseConfig) {
       await updateOrderItemStatus(orderId, itemId, nextStatus);
@@ -252,7 +254,7 @@ export function AppDataProvider({ children }) {
     );
 
     const summary = calculateOrderSummary(nextItems);
-    const nextOrderStatus = nextItems.every((item) => item.status === 'served')
+    const nextOrderStatus = nextItems.length && nextItems.every((item) => item.status === 'served')
       ? ORDER_STATUS.READY_FOR_PAYMENT
       : ORDER_STATUS.OPEN;
 
@@ -282,6 +284,22 @@ export function AppDataProvider({ children }) {
           : entry
       )
     );
+  };
+
+  const advanceOrderItemStatus = async (orderId, itemId) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    if (!order) return;
+
+    const targetItem = (order.items ?? []).find((item) => item.id === itemId);
+    if (!targetItem) return;
+
+    const currentIndex = ITEM_STATUS_FLOW.indexOf(targetItem.status);
+    const nextStatus = ITEM_STATUS_FLOW[Math.min(currentIndex + 1, ITEM_STATUS_FLOW.length - 1)];
+    await setOrderItemStatus(orderId, itemId, nextStatus);
+  };
+
+  const markOrderItemAsServed = async (orderId, itemId) => {
+    await setOrderItemStatus(orderId, itemId, 'served');
   };
 
   const closeTableAccount = async (tableId, paymentMethod = PAYMENT_METHOD.EFECTIVO) => {
@@ -367,6 +385,185 @@ export function AppDataProvider({ children }) {
     );
   };
 
+  const saveMenuProduct = async ({ menuItemId, name, category, price, station, available = true }) => {
+    if (!name?.trim()) throw new Error('El nombre del producto es obligatorio.');
+    if (!category?.trim()) throw new Error('La categoría es obligatoria.');
+    if (!station?.trim()) throw new Error('La estación es obligatoria.');
+    if (!Number.isFinite(Number(price)) || Number(price) < 0) {
+      throw new Error('El precio no es válido.');
+    }
+
+    const payload = {
+      name: name.trim(),
+      category: category.trim(),
+      price: Number(price),
+      station: station.trim(),
+      available: Boolean(available),
+    };
+
+    if (menuItemId) {
+      if (hasFirebaseConfig) {
+        await updateMenuItem(menuItemId, payload);
+        return { id: menuItemId, ...payload };
+      }
+
+      let nextItem = null;
+      setMenuItems((currentItems) =>
+        currentItems.map((item) => {
+          if (item.id !== menuItemId) return item;
+          nextItem = { ...item, ...payload };
+          return nextItem;
+        })
+      );
+      return nextItem;
+    }
+
+    return createMenuProduct(payload);
+  };
+
+
+  const createMenuCategoryEntry = async ({ name, active = true }) => {
+    if (!name?.trim()) throw new Error('El nombre de la categoría es obligatorio.');
+
+    const normalizedName = name.trim();
+    const duplicate = menuCategories.some((entry) => entry.name.toLowerCase() == normalizedName.toLowerCase());
+    if (duplicate) {
+      throw new Error('Ya existe una categoría con ese nombre.');
+    }
+
+    if (hasFirebaseConfig) {
+      const ref = await createMenuCategory({ name: normalizedName, active });
+      return { id: ref.id, name: normalizedName, active: Boolean(active) };
+    }
+
+    const nextCategory = {
+      id: `cat_${Date.now()}`,
+      name: normalizedName,
+      active: Boolean(active),
+    };
+
+    setMenuCategories((currentCategories) =>
+      [...currentCategories, nextCategory].sort((a, b) => a.name.localeCompare(b.name))
+    );
+
+    return nextCategory;
+  };
+
+  const toggleCategoryAvailability = async (categoryId, nextValue) => {
+    if (hasFirebaseConfig) {
+      await toggleMenuCategoryAvailability(categoryId, nextValue);
+      return;
+    }
+
+    setMenuCategories((currentCategories) =>
+      currentCategories.map((item) =>
+        item.id === categoryId ? { ...item, active: Boolean(nextValue) } : item
+      )
+    );
+  };
+
+  const saveMenuCategory = async ({ categoryId, name, active = true }) => {
+    if (!name?.trim()) throw new Error('El nombre de la categoría es obligatorio.');
+
+    const normalizedName = name.trim();
+    const duplicate = menuCategories.some(
+      (entry) => entry.id !== categoryId && entry.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error('Ya existe una categoría con ese nombre.');
+    }
+
+    if (!categoryId) {
+      return createMenuCategoryEntry({ name: normalizedName, active });
+    }
+
+    const currentCategory = menuCategories.find((entry) => entry.id === categoryId);
+    if (!currentCategory) throw new Error('La categoría no existe.');
+
+    const payload = { name: normalizedName, active: Boolean(active) };
+
+    if (hasFirebaseConfig) {
+      await updateMenuCategory(categoryId, payload);
+      if (currentCategory.name !== normalizedName) {
+        await renameMenuItemsCategory(currentCategory.name, normalizedName);
+      }
+      return { id: categoryId, ...payload };
+    }
+
+    setMenuCategories((currentCategories) =>
+      currentCategories.map((entry) => (entry.id === categoryId ? { ...entry, ...payload } : entry))
+    );
+
+    if (currentCategory.name !== normalizedName) {
+      setMenuItems((currentItems) =>
+        currentItems.map((item) =>
+          item.category === currentCategory.name ? { ...item, category: normalizedName } : item
+        )
+      );
+    }
+
+    return { id: categoryId, ...payload };
+  };
+
+  const removeMenuCategoryEntry = async (categoryId) => {
+    if (!categoryId) throw new Error('categoryId es obligatorio.');
+
+    const currentCategory = menuCategories.find((entry) => entry.id === categoryId);
+    if (!currentCategory) throw new Error('La categoría no existe.');
+
+    const linkedProducts = menuItems.filter((item) => item.category === currentCategory.name);
+    if (linkedProducts.length) {
+      throw new Error('No puedes eliminar una categoría con productos asignados. Reasigna o edita esos productos primero.');
+    }
+
+    if (hasFirebaseConfig) {
+      await deleteMenuCategory(categoryId);
+      return;
+    }
+
+    setMenuCategories((currentCategories) => currentCategories.filter((entry) => entry.id !== categoryId));
+  };
+
+  const createTableEntry = async ({ number, seats = 4, name, zone = 'Principal' }) => {
+    if (hasFirebaseConfig) {
+      const ref = await createTable({ number, seats, name, zone });
+      return { id: ref.id, number, seats, name, zone };
+    }
+
+    const nextTable = {
+      id: `table_${Date.now()}`,
+      number: Number(number),
+      name: name?.trim() || `Mesa ${number}`,
+      seats: Number(seats),
+      zone: zone?.trim() || 'Principal',
+      status: TABLE_STATUS.LIBRE,
+      currentOrderId: null,
+      currentTotal: 0,
+      openedAt: null,
+    };
+
+    setTables((currentTables) =>
+      [...currentTables, nextTable].sort((a, b) => Number(a.number || 0) - Number(b.number || 0))
+    );
+
+    return nextTable;
+  };
+
+  const updateTableEntry = async (tableId, payload) => {
+    if (!tableId) throw new Error('tableId es obligatorio.');
+
+    if (hasFirebaseConfig) {
+      await updateTable(tableId, payload);
+      return;
+    }
+
+    setTables((currentTables) =>
+      currentTables
+        .map((table) => (table.id === tableId ? { ...table, ...payload } : table))
+        .sort((a, b) => Number(a.number || 0) - Number(b.number || 0))
+    );
+  };
+
   const refreshOrderTotals = async (orderId) => {
     if (hasFirebaseConfig) {
       await recalculateOrderTotals(orderId);
@@ -428,6 +625,7 @@ export function AppDataProvider({ children }) {
     () => ({
       tables,
       orders,
+      menuCategories,
       menuItems,
       sales,
       loadingData,
@@ -435,13 +633,22 @@ export function AppDataProvider({ children }) {
       openTableAccount,
       addMenuItemToTable,
       advanceOrderItemStatus,
+      setOrderItemStatus,
+      markOrderItemAsServed,
       closeTableAccount,
       createMenuProduct,
+      createMenuCategoryEntry,
+      saveMenuCategory,
+      toggleCategoryAvailability,
+      removeMenuCategoryEntry,
       toggleMenuAvailability,
+      saveMenuProduct,
+      createTableEntry,
+      updateTableEntry,
       refreshOrderTotals,
       seedDemoData,
     }),
-    [tables, orders, menuItems, sales, loadingData, user]
+    [tables, orders, menuCategories, menuItems, sales, loadingData, user]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
