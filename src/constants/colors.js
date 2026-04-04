@@ -1,0 +1,30 @@
+export const COLORS = {
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F1F5F9',
+  text: '#0F172A',
+  textSecondary: '#64748B',
+  border: '#E2E8F0',
+  primary: '#2563EB',
+  success: '#16A34A',
+  warning: '#F59E0B',
+  danger: '#DC2626',
+  info: '#0EA5E9',
+  dark: '#0F172A',
+  white: '#FFFFFF',
+};
+
+export const STATUS_COLORS = {
+  libre: { background: '#E2E8F0', text: '#334155' },
+  ocupada: { background: '#DBEAFE', text: '#1D4ED8' },
+  pendiente: { background: '#FEF3C7', text: '#B45309' },
+  retrasada: { background: '#FEE2E2', text: '#B91C1C' },
+  por_cobrar: { background: '#DCFCE7', text: '#15803D' },
+  pending: { background: '#FEF3C7', text: '#B45309' },
+  preparing: { background: '#DBEAFE', text: '#1D4ED8' },
+  ready: { background: '#E0F2FE', text: '#0369A1' },
+  served: { background: '#DCFCE7', text: '#15803D' },
+  closed: { background: '#E2E8F0', text: '#334155' },
+  available: { background: '#DCFCE7', text: '#15803D' },
+  paused: { background: '#FEF3C7', text: '#B45309' },
+};
