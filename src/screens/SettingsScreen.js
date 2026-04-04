@@ -40,7 +40,7 @@ const cards = [
 
 export default function SettingsScreen() {
   const { signOut, usingFirebaseAuth, user } = useAuth();
-  const { isUsingMockData, seedDemoData, tables, createTableEntry, updateTableEntry } = useAppData();
+  const { isUsingMockData, seedDemoData, tables, createTableEntry, updateTableEntry, businessConfig, saveBusinessConfig } = useAppData();
   const [isTableModalVisible, setIsTableModalVisible] = useState(false);
   const [savingTable, setSavingTable] = useState(false);
   const [editingTableId, setEditingTableId] = useState(null);
@@ -124,6 +124,16 @@ export default function SettingsScreen() {
     }
   };
 
+  const toggleAccountCreation = async () => {
+    try {
+      await saveBusinessConfig({
+        allowAccountCreation: !businessConfig?.allowAccountCreation,
+      });
+    } catch (error) {
+      Alert.alert('No se pudo actualizar la configuración', error.message);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await signOut();
@@ -156,6 +166,26 @@ export default function SettingsScreen() {
         <Text style={styles.userTitle}>Sesión actual</Text>
         <Text style={styles.userEmail}>{user?.email || 'Sin usuario'}</Text>
         <Text style={styles.userMeta}>{usingFirebaseAuth ? 'Autenticación real con Firebase' : 'Autenticación demo local'}</Text>
+      </View>
+
+
+      <SectionHeader title="Operación del negocio" subtitle="Controla reglas globales sin tocar código" />
+      <View style={styles.configCard}>
+        <View style={styles.configRow}>
+          <View style={styles.configInfo}>
+            <Text style={styles.configTitle}>Creación de cuentas</Text>
+            <Text style={styles.configDescription}>
+              {businessConfig?.allowAccountCreation
+                ? 'Actualmente está habilitada. Los meseros pueden abrir cuentas nuevas.'
+                : 'Actualmente está deshabilitada. Solo podrás operar cuentas existentes.'}
+            </Text>
+          </View>
+          <Pressable onPress={toggleAccountCreation} style={[styles.toggleButton, businessConfig?.allowAccountCreation ? styles.toggleButtonDanger : styles.toggleButtonSuccess]}>
+            <Text style={styles.toggleButtonText}>
+              {businessConfig?.allowAccountCreation ? 'Deshabilitar' : 'Habilitar'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <SectionHeader title="Arquitectura base" subtitle="Bloques recomendados para el crecimiento del proyecto" />

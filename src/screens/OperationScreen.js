@@ -37,6 +37,7 @@ export default function OperationScreen() {
     addMenuItemToTable,
     closeTableAccount,
     markOrderItemAsServed,
+    businessConfig,
   } = useAppData();
 
   const [selectedTableId, setSelectedTableId] = useState(null);
@@ -107,6 +108,8 @@ export default function OperationScreen() {
     [selectedOrder]
   );
 
+  const canCreateAccount = businessConfig?.allowAccountCreation === true;
+
   const stats = useMemo(() => {
     const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
     const activeTables = tables.filter((table) => table.currentOrderId).length;
@@ -124,7 +127,7 @@ export default function OperationScreen() {
   };
 
   const openOpenAccountModal = () => {
-    if (!selectedTable) return;
+    if (!selectedTable || !canCreateAccount) return;
     setPeopleInput(String(selectedTable.seats || 2));
     setIsOpenAccountModalVisible(true);
   };
@@ -268,7 +271,7 @@ export default function OperationScreen() {
         <InfoCard
           tone="success"
           title="Firebase conectado"
-          description="Ya puedes abrir cuentas, agregar productos y cerrar mesas usando Firestore en tiempo real."
+          description={canCreateAccount ? 'Ya puedes abrir cuentas, agregar productos y cerrar mesas usando Firestore en tiempo real.' : 'La creación de cuentas está deshabilitada temporalmente desde la configuración del negocio.'}
         />
       )}
 
@@ -374,9 +377,16 @@ export default function OperationScreen() {
           ) : (
             <>
               <EmptyState title="Mesa sin pedido" description="Abre una cuenta para empezar a registrar consumo." />
-              <Pressable onPress={openOpenAccountModal} style={[styles.primaryButton, busyAction && styles.disabledButton]} disabled={busyAction}>
+              <Pressable
+                onPress={openOpenAccountModal}
+                style={[styles.primaryButton, (busyAction || !canCreateAccount) && styles.disabledButton]}
+                disabled={busyAction || !canCreateAccount}
+              >
                 <Text style={styles.primaryButtonText}>{busyAction ? 'Abriendo...' : 'Abrir cuenta'}</Text>
               </Pressable>
+              {!canCreateAccount ? (
+                <Text style={styles.accountDisabledText}>La creación de cuentas está deshabilitada temporalmente.</Text>
+              ) : null}
             </>
           )}
         </View>

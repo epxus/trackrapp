@@ -1,3 +1,9 @@
+export const mockBusinessConfig = {
+  name: 'PedidoFlow',
+  currency: 'MXN',
+  allowAccountCreation: false,
+};
+
 export const mockMenuCategories = [
   { id: 'cat_1', name: 'Hamburguesas', active: true },
   { id: 'cat_2', name: 'Entradas', active: true },

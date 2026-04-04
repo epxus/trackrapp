@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { hasFirebaseConfig } from '../firebase/client.js';
-import { mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
+import { mockBusinessConfig, mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
 import { createMenuCategory, createMenuItem, deleteMenuCategory, renameMenuItemsCategory, subscribeToMenuCategories, subscribeToMenuItems, toggleMenuCategoryAvailability, toggleMenuItemAvailability, updateMenuCategory, updateMenuItem } from '../services/menuService.js';
 import { addOrderItem, updateOrderItemStatus } from '../services/orderItemService.js';
 import { closeOrder, openOrder, recalculateOrderTotals, subscribeToOrders } from '../services/ordersService.js';
 import { subscribeToSales } from '../services/salesService.js';
 import { seedFirestoreWithMockData } from '../services/seedService.js';
+import { DEFAULT_BUSINESS_CONFIG, ensureBusinessConfig, subscribeBusinessConfig, updateBusinessConfig } from '../services/businessService.js';
 import { createTable, subscribeToTables, updateTable } from '../services/tablesService.js';
 import { useAuth } from './AuthContext.js';
 import { calculateOrderSummary, getTableStatusLabel } from '../utils/orderUtils.js';
@@ -22,6 +23,7 @@ function cloneDemoState() {
     menuCategories: JSON.parse(JSON.stringify(mockMenuCategories)),
     menuItems: JSON.parse(JSON.stringify(mockMenuItems)),
     sales: JSON.parse(JSON.stringify(mockSales)),
+    businessConfig: JSON.parse(JSON.stringify(mockBusinessConfig)),
   };
 }
 
@@ -32,6 +34,7 @@ export function AppDataProvider({ children }) {
   const [menuCategories, setMenuCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [sales, setSales] = useState([]);
+  const [businessConfig, setBusinessConfig] = useState(DEFAULT_BUSINESS_CONFIG);
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export function AppDataProvider({ children }) {
       setMenuCategories([]);
       setMenuItems([]);
       setSales([]);
+      setBusinessConfig(DEFAULT_BUSINESS_CONFIG);
       setLoadingData(false);
       return undefined;
     }
@@ -52,13 +56,17 @@ export function AppDataProvider({ children }) {
       setMenuCategories(demoState.menuCategories);
       setMenuItems(demoState.menuItems);
       setSales(demoState.sales);
+      setBusinessConfig(demoState.businessConfig || DEFAULT_BUSINESS_CONFIG);
       setLoadingData(false);
       return undefined;
     }
 
     setLoadingData(true);
 
+    ensureBusinessConfig().catch(() => {});
+
     const unsubscribers = [
+      subscribeBusinessConfig((nextConfig) => setBusinessConfig(nextConfig)),
       subscribeToTables((nextTables) => {
         setTables(nextTables);
         setLoadingData(false);
@@ -88,6 +96,10 @@ export function AppDataProvider({ children }) {
     const table = tables.find((entry) => entry.id === tableId);
     if (!table) {
       throw new Error('La mesa no existe.');
+    }
+
+    if (!businessConfig?.allowAccountCreation) {
+      throw new Error('La creación de cuentas está deshabilitada.');
     }
 
     if (hasFirebaseConfig) {
@@ -640,6 +652,19 @@ export function AppDataProvider({ children }) {
     });
   }, [tables, orders]);
 
+
+  const saveBusinessConfig = async (patch) => {
+    if (hasFirebaseConfig) {
+      await updateBusinessConfig(patch);
+      return;
+    }
+
+    setBusinessConfig((current) => ({
+      ...current,
+      ...patch,
+    }));
+  };
+
   const seedDemoData = async () => {
     if (!hasFirebaseConfig) {
       Alert.alert('Modo demo', 'Ya estás viendo los datos mock localmente.');
@@ -661,6 +686,7 @@ export function AppDataProvider({ children }) {
       menuCategories,
       menuItems,
       sales,
+      businessConfig,
       loadingData,
       isUsingMockData: !hasFirebaseConfig,
       openTableAccount,
@@ -680,8 +706,9 @@ export function AppDataProvider({ children }) {
       updateTableEntry,
       refreshOrderTotals,
       seedDemoData,
+      saveBusinessConfig,
     }),
-    [tablesWithComputedTotals, orders, menuCategories, menuItems, sales, loadingData, user]
+    [tablesWithComputedTotals, orders, menuCategories, menuItems, sales, businessConfig, loadingData, user]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
