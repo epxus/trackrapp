@@ -4,15 +4,19 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  startAfter,
   Timestamp,
   where,
 } from 'firebase/firestore';
 import { COLLECTIONS } from '../constants/collections.js';
 import { db } from '../firebase/client.js';
+
+export const SALES_PAGE_SIZE = 20;
 
 function mapDocs(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
@@ -29,9 +33,51 @@ function normalizeDateInput(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function subscribeToSales(callback) {
+function getPeriodStart(period, now = new Date()) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+
+  if (period === 'today') {
+    return start;
+  }
+
+  if (period === 'week') {
+    const day = start.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    start.setDate(start.getDate() + diff);
+    return start;
+  }
+
+  if (period === 'month') {
+    start.setDate(1);
+    return start;
+  }
+
+  return null;
+}
+
+function buildSalesQuery({ period = 'all', pageSize = SALES_PAGE_SIZE, cursor = null } = {}) {
+  const base = [collection(db, COLLECTIONS.SALES)];
+  const start = getPeriodStart(period);
+
+  const clauses = [];
+  if (start) {
+    clauses.push(where('closedAt', '>=', Timestamp.fromDate(start)));
+  }
+
+  clauses.push(orderBy('closedAt', 'desc'));
+
+  if (cursor) {
+    clauses.push(startAfter(cursor));
+  }
+
+  clauses.push(limit(pageSize));
+  return query(base[0], ...clauses);
+}
+
+export function subscribeToSales(callback, { limitCount = SALES_PAGE_SIZE } = {}) {
   if (!db) return () => {};
-  const q = query(collection(db, COLLECTIONS.SALES), orderBy('closedAt', 'desc'));
+  const q = query(collection(db, COLLECTIONS.SALES), orderBy('closedAt', 'desc'), limit(limitCount));
   return onSnapshot(q, (snapshot) => callback(mapDocs(snapshot)));
 }
 
@@ -48,6 +94,21 @@ export function subscribeToTodaySales(callback) {
   );
 
   return onSnapshot(q, (snapshot) => callback(mapDocs(snapshot)));
+}
+
+export async function getSalesPage({ period = 'all', pageSize = SALES_PAGE_SIZE, cursor = null } = {}) {
+  if (!db) {
+    return { sales: [], cursor: null, hasMore: false };
+  }
+
+  const snapshot = await getDocs(buildSalesQuery({ period, pageSize, cursor }));
+  const nextCursor = snapshot.docs.length ? snapshot.docs[snapshot.docs.length - 1] : null;
+
+  return {
+    sales: mapDocs(snapshot),
+    cursor: nextCursor,
+    hasMore: snapshot.docs.length === pageSize,
+  };
 }
 
 export async function getSaleById(saleId) {

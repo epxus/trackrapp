@@ -5,7 +5,7 @@ import { mockBusinessConfig, mockMenuCategories, mockMenuItems, mockOrders, mock
 import { createMenuCategory, createMenuItem, deleteMenuCategory, renameMenuItemsCategory, subscribeToMenuCategories, subscribeToMenuItems, toggleMenuCategoryAvailability, toggleMenuItemAvailability, updateMenuCategory, updateMenuItem } from '../services/menuService.js';
 import { addOrderItem, clearOrderItems, removeOrderItem, updateOrderItem, updateOrderItemStatus } from '../services/orderItemService.js';
 import { closeOrder, openOrder, recalculateOrderTotals, subscribeToOrders } from '../services/ordersService.js';
-import { subscribeToSales, subscribeToTodaySales } from '../services/salesService.js';
+import { SALES_PAGE_SIZE, subscribeToSales, subscribeToTodaySales } from '../services/salesService.js';
 import { seedFirestoreWithMockData } from '../services/seedService.js';
 import { DEFAULT_BUSINESS_CONFIG, ensureBusinessConfig, subscribeBusinessConfig, updateBusinessConfig } from '../services/businessService.js';
 import { createTable, subscribeToTables, updateTable } from '../services/tablesService.js';
@@ -98,7 +98,7 @@ export function AppDataProvider({ children }) {
       subscribeToOrders((nextOrders) => setOrders(nextOrders)),
       subscribeToMenuCategories((nextCategories) => setMenuCategories(nextCategories)),
       subscribeToMenuItems((nextItems) => setMenuItems(nextItems)),
-      subscribeToSales((nextSales) => setSales(nextSales)),
+      subscribeToSales((nextSales) => setSales(nextSales), { limitCount: SALES_PAGE_SIZE }),
       subscribeToTodaySales((nextTodaySales) => setTodaySales(nextTodaySales)),
     ];
 

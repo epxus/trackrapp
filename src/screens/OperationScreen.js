@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,12 +50,15 @@ export default function OperationScreen() {
   const [isProductModalVisible, setIsProductModalVisible] = useState(false);
   const [isCloseModalVisible, setIsCloseModalVisible] = useState(false);
   const [isEditItemModalVisible, setIsEditItemModalVisible] = useState(false);
+  const [isRemoveItemModalVisible, setIsRemoveItemModalVisible] = useState(false);
+  const [isClearOrderModalVisible, setIsClearOrderModalVisible] = useState(false);
   const [peopleInput, setPeopleInput] = useState('2');
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedMenuItemId, setSelectedMenuItemId] = useState(null);
   const [quantityInput, setQuantityInput] = useState('1');
   const [notesInput, setNotesInput] = useState('');
   const [editingItemId, setEditingItemId] = useState(null);
+  const [removingItem, setRemovingItem] = useState(null);
   const [editQuantityInput, setEditQuantityInput] = useState('1');
   const [editNotesInput, setEditNotesInput] = useState('');
 
@@ -186,6 +188,17 @@ export default function OperationScreen() {
     resetEditItemForm();
   };
 
+  const closeRemoveItemModal = () => {
+    if (busyAction) return;
+    setIsRemoveItemModalVisible(false);
+    setRemovingItem(null);
+  };
+
+  const closeClearOrderModal = () => {
+    if (busyAction) return;
+    setIsClearOrderModalVisible(false);
+  };
+
   const openCloseAccountModal = () => {
     if (!selectedTable || !selectedOrder) return;
     setIsCloseModalVisible(true);
@@ -272,26 +285,30 @@ export default function OperationScreen() {
   };
 
   const executeRemoveItem = async (item) => {
-    if (!selectedOrder?.id || !item) return;
+    if (!selectedOrder?.id || !item) return false;
 
     try {
       setBusyAction(true);
       await removeOrderItemEntry(selectedOrder.id, item.id);
+      return true;
     } catch (error) {
       Alert.alert('No se pudo quitar el producto', error.message);
+      return false;
     } finally {
       setBusyAction(false);
     }
   };
 
   const executeClearOrder = async () => {
-    if (!selectedOrder?.id) return;
+    if (!selectedOrder?.id) return false;
 
     try {
       setBusyAction(true);
       await clearOrderItemsFromTable(selectedOrder.id);
+      return true;
     } catch (error) {
       Alert.alert('No se pudo limpiar la orden', error.message);
+      return false;
     } finally {
       setBusyAction(false);
     }
@@ -299,58 +316,29 @@ export default function OperationScreen() {
 
   const handleRemoveItem = (item) => {
     if (!selectedOrder?.id || !item) return;
+    setRemovingItem(item);
+    setIsRemoveItemModalVisible(true);
+  };
 
-    if (Platform.OS === 'web') {
-      const shouldRemove = globalThis?.confirm?.(`¿Deseas quitar ${item.name} de la orden?`);
-      if (shouldRemove) {
-        void executeRemoveItem(item);
-      }
-      return;
+  const handleConfirmRemoveItem = async () => {
+    if (!removingItem) return;
+    const success = await executeRemoveItem(removingItem);
+    if (success) {
+      setIsRemoveItemModalVisible(false);
+      setRemovingItem(null);
     }
-
-    Alert.alert(
-      'Quitar producto',
-      `¿Deseas quitar ${item.name} de la orden?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Quitar',
-          style: 'destructive',
-          onPress: () => {
-            void executeRemoveItem(item);
-          },
-        },
-      ]
-    );
   };
 
   const handleClearOrder = () => {
     if (!selectedOrder?.id) return;
+    setIsClearOrderModalVisible(true);
+  };
 
-    if (Platform.OS === 'web') {
-      const shouldClear = globalThis?.confirm?.(
-        'Se quitarán todos los productos de la cuenta actual. La mesa seguirá abierta para capturar un nuevo pedido.'
-      );
-      if (shouldClear) {
-        void executeClearOrder();
-      }
-      return;
+  const handleConfirmClearOrder = async () => {
+    const success = await executeClearOrder();
+    if (success) {
+      setIsClearOrderModalVisible(false);
     }
-
-    Alert.alert(
-      'Limpiar orden',
-      'Se quitarán todos los productos de la cuenta actual. La mesa seguirá abierta para capturar un nuevo pedido.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Limpiar',
-          style: 'destructive',
-          onPress: () => {
-            void executeClearOrder();
-          },
-        },
-      ]
-    );
   };
 
   const handleConfirmCloseAccount = async () => {
@@ -852,6 +840,107 @@ export default function OperationScreen() {
         </View>
       </Modal>
 
+
+      <Modal visible={isRemoveItemModalVisible} transparent animationType="fade" onRequestClose={closeRemoveItemModal}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.compactModalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Quitar producto</Text>
+                <Text style={styles.modalSubtitle}>Confirma si deseas eliminarlo de la cuenta actual</Text>
+              </View>
+              <Pressable onPress={closeRemoveItemModal} style={styles.modalCloseButton} disabled={busyAction}>
+                <Ionicons name="close" size={20} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.closeSummaryCard}>
+              <View style={styles.closeSummaryRow}>
+                <Text style={styles.closeSummaryLabel}>Producto</Text>
+                <Text style={styles.closeSummaryValue}>{removingItem?.name || '—'}</Text>
+              </View>
+              <View style={styles.closeSummaryRow}>
+                <Text style={styles.closeSummaryLabel}>Cantidad</Text>
+                <Text style={styles.closeSummaryValue}>{removingItem?.quantity ?? 0}</Text>
+              </View>
+              <View style={[styles.closeSummaryRow, styles.closeSummaryTotalRow]}>
+                <Text style={styles.closeSummaryTotalLabel}>Importe</Text>
+                <Text style={styles.closeSummaryTotalValue}>{formatCurrency((removingItem?.price || 0) * (removingItem?.quantity || 0))}</Text>
+              </View>
+            </View>
+
+            <InfoCard
+              tone="warning"
+              title="Acción irreversible"
+              description="El producto se eliminará de la orden y el total de la cuenta se recalculará automáticamente."
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={closeRemoveItemModal} style={styles.modalSecondaryButton} disabled={busyAction}>
+                <Text style={styles.modalSecondaryButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmRemoveItem}
+                style={[styles.modalDangerButton, busyAction && styles.disabledButton]}
+                disabled={busyAction}
+              >
+                <Text style={styles.modalDangerButtonText}>{busyAction ? 'Quitando...' : 'Quitar producto'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isClearOrderModalVisible} transparent animationType="fade" onRequestClose={closeClearOrderModal}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.compactModalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Limpiar orden</Text>
+                <Text style={styles.modalSubtitle}>Mesa {selectedTable?.number} · conservar mesa abierta</Text>
+              </View>
+              <Pressable onPress={closeClearOrderModal} style={styles.modalCloseButton} disabled={busyAction}>
+                <Ionicons name="close" size={20} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.closeSummaryCard}>
+              <View style={styles.closeSummaryRow}>
+                <Text style={styles.closeSummaryLabel}>Productos actuales</Text>
+                <Text style={styles.closeSummaryValue}>{selectedOrderSummary.totalItems}</Text>
+              </View>
+              <View style={styles.closeSummaryRow}>
+                <Text style={styles.closeSummaryLabel}>Pendientes</Text>
+                <Text style={styles.closeSummaryValue}>{selectedOrderSummary.pendingItems}</Text>
+              </View>
+              <View style={[styles.closeSummaryRow, styles.closeSummaryTotalRow]}>
+                <Text style={styles.closeSummaryTotalLabel}>Total a reiniciar</Text>
+                <Text style={styles.closeSummaryTotalValue}>{formatCurrency(selectedOrderSummary.subtotal)}</Text>
+              </View>
+            </View>
+
+            <InfoCard
+              tone="warning"
+              title="Se mantendrá la cuenta abierta"
+              description="Se eliminarán todos los productos de la orden, pero la mesa seguirá abierta para capturar un nuevo pedido."
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={closeClearOrderModal} style={styles.modalSecondaryButton} disabled={busyAction}>
+                <Text style={styles.modalSecondaryButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmClearOrder}
+                style={[styles.modalDangerButton, busyAction && styles.disabledButton]}
+                disabled={busyAction}
+              >
+                <Text style={styles.modalDangerButtonText}>{busyAction ? 'Limpiando...' : 'Limpiar orden'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={isCloseModalVisible} transparent animationType="fade" onRequestClose={closeCloseAccountModal}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -1316,6 +1405,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   modalPrimaryButtonText: {
+    color: COLORS.white,
+    fontWeight: '800',
+  },
+  modalDangerButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: COLORS.error || '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  modalDangerButtonText: {
     color: COLORS.white,
     fontWeight: '800',
   },

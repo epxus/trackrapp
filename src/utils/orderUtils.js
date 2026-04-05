@@ -63,8 +63,8 @@ export function matchesKitchenItemFilters(item, filters = {}) {
   return statusMatches && stationMatches;
 }
 
-export function formatDateTime(value, locale = 'es-MX') {
-  if (!value) return '—';
+export function parseDateValue(value) {
+  if (!value) return null;
 
   let date = null;
 
@@ -80,8 +80,111 @@ export function formatDateTime(value, locale = 'es-MX') {
   }
 
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return '—';
+    return null;
   }
 
+  return date;
+}
+
+export function formatDateTime(value, locale = 'es-MX') {
+  const date = parseDateValue(value);
+  if (!date) return '—';
   return date.toLocaleString(locale);
+}
+
+export function getSalesPeriodRange(period = 'today', now = new Date()) {
+  const current = parseDateValue(now) ?? new Date();
+  const start = new Date(current);
+  const end = new Date(current);
+
+  if (period === 'today') {
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  if (period === 'week') {
+    const day = start.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    start.setDate(start.getDate() - diffToMonday);
+    start.setHours(0, 0, 0, 0);
+
+    end.setTime(start.getTime());
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  if (period === 'month') {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+
+    end.setMonth(start.getMonth() + 1, 0);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+export function filterSalesByPeriod(sales = [], period = 'today', now = new Date()) {
+  const { start, end } = getSalesPeriodRange(period, now);
+
+  return sales.filter((sale) => {
+    const saleDate = parseDateValue(sale?.closedAt);
+    if (!saleDate) return false;
+    return saleDate >= start && saleDate <= end;
+  });
+}
+
+export function aggregateProductSalesMetrics(sales = [], orders = []) {
+  const metricsMap = new Map();
+
+  for (const sale of sales) {
+    const saleItems = Array.isArray(sale?.itemsSnapshot) && sale.itemsSnapshot.length
+      ? sale.itemsSnapshot
+      : (orders.find((order) => order.id === sale?.orderId)?.items ?? []);
+
+    for (const item of saleItems) {
+      const name = item?.name || item?.nombreSnapshot || 'Producto';
+      const quantity = Number(item?.quantity ?? item?.cantidad ?? 1);
+      const unitPrice = Number(item?.price ?? item?.precioSnapshot ?? 0);
+      const station = item?.station || item?.kitchenArea || 'Sin estación';
+      const revenue = quantity * unitPrice;
+
+      if (!metricsMap.has(name)) {
+        metricsMap.set(name, {
+          name,
+          station,
+          unitsSold: 0,
+          revenue: 0,
+          tickets: 0,
+        });
+      }
+
+      const current = metricsMap.get(name);
+      current.unitsSold += quantity;
+      current.revenue += revenue;
+      current.tickets += 1;
+    }
+  }
+
+  const products = [...metricsMap.values()].sort((a, b) => {
+    if (b.unitsSold !== a.unitsSold) return b.unitsSold - a.unitsSold;
+    return b.revenue - a.revenue;
+  });
+
+  const totalUnits = products.reduce((sum, product) => sum + product.unitsSold, 0);
+  const totalRevenue = products.reduce((sum, product) => sum + product.revenue, 0);
+  const topProduct = products[0] ?? null;
+
+  return {
+    products,
+    totalUnits,
+    totalRevenue,
+    uniqueProducts: products.length,
+    topProduct,
+  };
 }
