@@ -35,7 +35,10 @@ export function getOrderProgress(items = []) {
 export function getTableStatusLabel(table, order) {
   if (!order || order.status === 'closed') return 'libre';
 
-  const statuses = new Set((order.items ?? []).map((item) => item.status));
+  const items = order.items ?? [];
+  if (!items.length) return 'ocupada';
+
+  const statuses = new Set(items.map((item) => item.status));
 
   if (statuses.has('pending')) return 'pendiente';
   if (statuses.has('preparing') || statuses.has('ready')) return 'ocupada';

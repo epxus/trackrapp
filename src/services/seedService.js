@@ -1,4 +1,4 @@
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { Timestamp, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/client.js';
 import { mockBusinessConfig, mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
 
@@ -53,7 +53,7 @@ export async function seedFirestoreWithMockData() {
     mockSales.map((sale) =>
       setDoc(doc(db, 'sales', sale.id), {
         ...sale,
-        closedAt: sale.closedAt,
+        closedAt: sale.closedAt ? Timestamp.fromDate(new Date(sale.closedAt)) : serverTimestamp(),
       })
     )
   );

@@ -3,9 +3,9 @@ import { Alert } from 'react-native';
 import { hasFirebaseConfig } from '../firebase/client.js';
 import { mockBusinessConfig, mockMenuCategories, mockMenuItems, mockOrders, mockSales, mockTables } from '../mocks/mockData.js';
 import { createMenuCategory, createMenuItem, deleteMenuCategory, renameMenuItemsCategory, subscribeToMenuCategories, subscribeToMenuItems, toggleMenuCategoryAvailability, toggleMenuItemAvailability, updateMenuCategory, updateMenuItem } from '../services/menuService.js';
-import { addOrderItem, updateOrderItemStatus } from '../services/orderItemService.js';
+import { addOrderItem, clearOrderItems, removeOrderItem, updateOrderItem, updateOrderItemStatus } from '../services/orderItemService.js';
 import { closeOrder, openOrder, recalculateOrderTotals, subscribeToOrders } from '../services/ordersService.js';
-import { subscribeToSales } from '../services/salesService.js';
+import { subscribeToSales, subscribeToTodaySales } from '../services/salesService.js';
 import { seedFirestoreWithMockData } from '../services/seedService.js';
 import { DEFAULT_BUSINESS_CONFIG, ensureBusinessConfig, subscribeBusinessConfig, updateBusinessConfig } from '../services/businessService.js';
 import { createTable, subscribeToTables, updateTable } from '../services/tablesService.js';
@@ -15,6 +15,27 @@ import { ORDER_STATUS, PAYMENT_METHOD, TABLE_STATUS } from '../constants/statuse
 
 const AppDataContext = createContext(null);
 const ITEM_STATUS_FLOW = ['pending', 'preparing', 'ready', 'served'];
+
+function toDateSafe(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  if (typeof value?.seconds === 'number') {
+    return new Date((value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1_000_000));
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isSameCalendarDay(value, reference = new Date()) {
+  const date = toDateSafe(value);
+  if (!date) return false;
+  return (
+    date.getFullYear() === reference.getFullYear() &&
+    date.getMonth() === reference.getMonth() &&
+    date.getDate() === reference.getDate()
+  );
+}
 
 function cloneDemoState() {
   return {
@@ -34,6 +55,7 @@ export function AppDataProvider({ children }) {
   const [menuCategories, setMenuCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [sales, setSales] = useState([]);
+  const [todaySales, setTodaySales] = useState([]);
   const [businessConfig, setBusinessConfig] = useState(DEFAULT_BUSINESS_CONFIG);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -44,6 +66,7 @@ export function AppDataProvider({ children }) {
       setMenuCategories([]);
       setMenuItems([]);
       setSales([]);
+      setTodaySales([]);
       setBusinessConfig(DEFAULT_BUSINESS_CONFIG);
       setLoadingData(false);
       return undefined;
@@ -56,6 +79,7 @@ export function AppDataProvider({ children }) {
       setMenuCategories(demoState.menuCategories);
       setMenuItems(demoState.menuItems);
       setSales(demoState.sales);
+      setTodaySales(demoState.sales.filter((sale) => isSameCalendarDay(sale.closedAt)));
       setBusinessConfig(demoState.businessConfig || DEFAULT_BUSINESS_CONFIG);
       setLoadingData(false);
       return undefined;
@@ -75,6 +99,7 @@ export function AppDataProvider({ children }) {
       subscribeToMenuCategories((nextCategories) => setMenuCategories(nextCategories)),
       subscribeToMenuItems((nextItems) => setMenuItems(nextItems)),
       subscribeToSales((nextSales) => setSales(nextSales)),
+      subscribeToTodaySales((nextTodaySales) => setTodaySales(nextTodaySales)),
     ];
 
     return () => {
@@ -316,6 +341,159 @@ export function AppDataProvider({ children }) {
     await setOrderItemStatus(orderId, itemId, 'served');
   };
 
+
+  const updateOrderItemDetails = async (orderId, itemId, patch = {}) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    if (!order) {
+      throw new Error('La orden no existe.');
+    }
+
+    if (hasFirebaseConfig) {
+      await updateOrderItem(orderId, itemId, patch);
+      return;
+    }
+
+    const targetItem = (order.items ?? []).find((item) => item.id === itemId);
+    if (!targetItem) {
+      throw new Error('El producto de la orden no existe.');
+    }
+
+    const nextQuantity = patch.quantity == null ? Number(targetItem.quantity ?? 1) : Number(patch.quantity);
+    if (!Number.isFinite(nextQuantity) || nextQuantity < 1) {
+      throw new Error('La cantidad debe ser mayor o igual a 1.');
+    }
+
+    const nextItems = (order.items ?? []).map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            quantity: nextQuantity,
+            notes: patch.notes == null ? item.notes ?? '' : String(patch.notes).trim(),
+            updatedAt: new Date().toISOString(),
+          }
+        : item
+    );
+
+    const summary = calculateOrderSummary(nextItems);
+    const nextOrderStatus = nextItems.length && nextItems.every((item) => item.status === 'served')
+      ? ORDER_STATUS.READY_FOR_PAYMENT
+      : ORDER_STATUS.OPEN;
+
+    setOrders((currentOrders) =>
+      currentOrders.map((entry) =>
+        entry.id === orderId
+          ? {
+              ...entry,
+              items: nextItems,
+              subtotal: summary.subtotal,
+              total: summary.subtotal,
+              status: nextOrderStatus,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry
+      )
+    );
+
+    setTables((currentTables) =>
+      currentTables.map((entry) =>
+        entry.id === order.tableId
+          ? {
+              ...entry,
+              currentTotal: summary.subtotal,
+              total: summary.subtotal,
+              status: getTableStatusLabel(entry, { ...order, items: nextItems, status: nextOrderStatus }),
+            }
+          : entry
+      )
+    );
+  };
+
+  const removeOrderItemEntry = async (orderId, itemId) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    if (!order) {
+      throw new Error('La orden no existe.');
+    }
+
+    if (hasFirebaseConfig) {
+      await removeOrderItem(orderId, itemId);
+      return;
+    }
+
+    const nextItems = (order.items ?? []).filter((item) => item.id !== itemId);
+    const summary = calculateOrderSummary(nextItems);
+    const nextOrderStatus = nextItems.length && nextItems.every((item) => item.status === 'served')
+      ? ORDER_STATUS.READY_FOR_PAYMENT
+      : ORDER_STATUS.OPEN;
+
+    setOrders((currentOrders) =>
+      currentOrders.map((entry) =>
+        entry.id === orderId
+          ? {
+              ...entry,
+              items: nextItems,
+              subtotal: summary.subtotal,
+              total: summary.subtotal,
+              status: nextItems.length ? nextOrderStatus : ORDER_STATUS.OPEN,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry
+      )
+    );
+
+    setTables((currentTables) =>
+      currentTables.map((entry) =>
+        entry.id === order.tableId
+          ? {
+              ...entry,
+              currentTotal: summary.subtotal,
+              total: summary.subtotal,
+              status: getTableStatusLabel(entry, { ...order, items: nextItems, status: nextItems.length ? nextOrderStatus : ORDER_STATUS.OPEN }),
+            }
+          : entry
+      )
+    );
+  };
+
+  const clearOrderItemsFromTable = async (orderId) => {
+    const order = orders.find((entry) => entry.id === orderId);
+    if (!order) {
+      throw new Error('La orden no existe.');
+    }
+
+    if (hasFirebaseConfig) {
+      await clearOrderItems(orderId);
+      return;
+    }
+
+    setOrders((currentOrders) =>
+      currentOrders.map((entry) =>
+        entry.id === orderId
+          ? {
+              ...entry,
+              items: [],
+              subtotal: 0,
+              total: 0,
+              status: ORDER_STATUS.OPEN,
+              updatedAt: new Date().toISOString(),
+            }
+          : entry
+      )
+    );
+
+    setTables((currentTables) =>
+      currentTables.map((entry) =>
+        entry.id === order.tableId
+          ? {
+              ...entry,
+              currentTotal: 0,
+              total: 0,
+              status: TABLE_STATUS.OCUPADA,
+            }
+          : entry
+      )
+    );
+  };
+
   const closeTableAccount = async (tableId, paymentMethod = PAYMENT_METHOD.EFECTIVO) => {
     const table = tables.find((entry) => entry.id === tableId);
     const order = orders.find((entry) => entry.tableId === tableId && entry.status !== ORDER_STATUS.CLOSED);
@@ -345,7 +523,11 @@ export function AppDataProvider({ children }) {
       return;
     }
 
-    setSales((currentSales) => [{ id: `sale_${Date.now()}`, ...salePayload }, ...currentSales]);
+    const nextSale = { id: `sale_${Date.now()}`, ...salePayload };
+    setSales((currentSales) => [nextSale, ...currentSales]);
+    if (isSameCalendarDay(nextSale.closedAt)) {
+      setTodaySales((currentSales) => [nextSale, ...currentSales]);
+    }
     setOrders((currentOrders) =>
       currentOrders.map((entry) =>
         entry.id === order.id
@@ -686,6 +868,7 @@ export function AppDataProvider({ children }) {
       menuCategories,
       menuItems,
       sales,
+      todaySales,
       businessConfig,
       loadingData,
       isUsingMockData: !hasFirebaseConfig,
@@ -694,6 +877,9 @@ export function AppDataProvider({ children }) {
       advanceOrderItemStatus,
       setOrderItemStatus,
       markOrderItemAsServed,
+      updateOrderItemDetails,
+      removeOrderItemEntry,
+      clearOrderItemsFromTable,
       closeTableAccount,
       createMenuProduct,
       createMenuCategoryEntry,
@@ -708,7 +894,7 @@ export function AppDataProvider({ children }) {
       seedDemoData,
       saveBusinessConfig,
     }),
-    [tablesWithComputedTotals, orders, menuCategories, menuItems, sales, businessConfig, loadingData, user]
+    [tablesWithComputedTotals, orders, menuCategories, menuItems, sales, todaySales, businessConfig, loadingData, user]
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

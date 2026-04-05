@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +31,7 @@ export default function OperationScreen() {
     tables,
     orders,
     sales,
+    todaySales,
     menuItems,
     loadingData,
     isUsingMockData,
@@ -37,6 +39,9 @@ export default function OperationScreen() {
     addMenuItemToTable,
     closeTableAccount,
     markOrderItemAsServed,
+    updateOrderItemDetails,
+    removeOrderItemEntry,
+    clearOrderItemsFromTable,
     businessConfig,
   } = useAppData();
 
@@ -45,11 +50,15 @@ export default function OperationScreen() {
   const [isOpenAccountModalVisible, setIsOpenAccountModalVisible] = useState(false);
   const [isProductModalVisible, setIsProductModalVisible] = useState(false);
   const [isCloseModalVisible, setIsCloseModalVisible] = useState(false);
+  const [isEditItemModalVisible, setIsEditItemModalVisible] = useState(false);
   const [peopleInput, setPeopleInput] = useState('2');
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedMenuItemId, setSelectedMenuItemId] = useState(null);
   const [quantityInput, setQuantityInput] = useState('1');
   const [notesInput, setNotesInput] = useState('');
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editQuantityInput, setEditQuantityInput] = useState('1');
+  const [editNotesInput, setEditNotesInput] = useState('');
 
   useEffect(() => {
     if (!tables.length) return;
@@ -108,15 +117,20 @@ export default function OperationScreen() {
     [selectedOrder]
   );
 
+  const editingItem = useMemo(
+    () => selectedOrder?.items?.find((item) => item.id === editingItemId) || null,
+    [selectedOrder, editingItemId]
+  );
+
   const canCreateAccount = businessConfig?.allowAccountCreation === true;
 
   const stats = useMemo(() => {
-    const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+    const totalSales = todaySales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
     const activeTables = tables.filter((table) => table.currentOrderId).length;
     const openOrders = orders.filter((order) => order.status !== 'closed').length;
-    const avgTicket = sales.length ? Math.round(totalSales / sales.length) : 0;
+    const avgTicket = todaySales.length ? Math.round(totalSales / todaySales.length) : 0;
     return { totalSales, activeTables, openOrders, avgTicket };
-  }, [tables, orders, sales]);
+  }, [tables, orders, todaySales]);
 
   const pendingOrders = useMemo(() => orders.filter((order) => order.status !== 'closed'), [orders]);
 
@@ -124,6 +138,12 @@ export default function OperationScreen() {
     setMenuSearch('');
     setQuantityInput('1');
     setNotesInput('');
+  };
+
+  const resetEditItemForm = () => {
+    setEditingItemId(null);
+    setEditQuantityInput('1');
+    setEditNotesInput('');
   };
 
   const openOpenAccountModal = () => {
@@ -149,6 +169,21 @@ export default function OperationScreen() {
     if (busyAction) return;
     setIsProductModalVisible(false);
     resetProductForm();
+  };
+
+
+  const openEditItemModal = (item) => {
+    if (!item) return;
+    setEditingItemId(item.id);
+    setEditQuantityInput(String(item.quantity ?? 1));
+    setEditNotesInput(item.notes ?? '');
+    setIsEditItemModalVisible(true);
+  };
+
+  const closeEditItemModal = () => {
+    if (busyAction) return;
+    setIsEditItemModalVisible(false);
+    resetEditItemForm();
   };
 
   const openCloseAccountModal = () => {
@@ -209,6 +244,113 @@ export default function OperationScreen() {
     } finally {
       setBusyAction(false);
     }
+  };
+
+
+  const handleSaveEditedItem = async () => {
+    if (!selectedOrder?.id || !editingItem) return;
+
+    const quantity = Number(editQuantityInput);
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      Alert.alert('Cantidad inválida', 'Captura una cantidad mayor o igual a 1.');
+      return;
+    }
+
+    try {
+      setBusyAction(true);
+      await updateOrderItemDetails(selectedOrder.id, editingItem.id, {
+        quantity,
+        notes: editNotesInput,
+      });
+      setIsEditItemModalVisible(false);
+      resetEditItemForm();
+    } catch (error) {
+      Alert.alert('No se pudo editar el producto', error.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const executeRemoveItem = async (item) => {
+    if (!selectedOrder?.id || !item) return;
+
+    try {
+      setBusyAction(true);
+      await removeOrderItemEntry(selectedOrder.id, item.id);
+    } catch (error) {
+      Alert.alert('No se pudo quitar el producto', error.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const executeClearOrder = async () => {
+    if (!selectedOrder?.id) return;
+
+    try {
+      setBusyAction(true);
+      await clearOrderItemsFromTable(selectedOrder.id);
+    } catch (error) {
+      Alert.alert('No se pudo limpiar la orden', error.message);
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const handleRemoveItem = (item) => {
+    if (!selectedOrder?.id || !item) return;
+
+    if (Platform.OS === 'web') {
+      const shouldRemove = globalThis?.confirm?.(`¿Deseas quitar ${item.name} de la orden?`);
+      if (shouldRemove) {
+        void executeRemoveItem(item);
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Quitar producto',
+      `¿Deseas quitar ${item.name} de la orden?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Quitar',
+          style: 'destructive',
+          onPress: () => {
+            void executeRemoveItem(item);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearOrder = () => {
+    if (!selectedOrder?.id) return;
+
+    if (Platform.OS === 'web') {
+      const shouldClear = globalThis?.confirm?.(
+        'Se quitarán todos los productos de la cuenta actual. La mesa seguirá abierta para capturar un nuevo pedido.'
+      );
+      if (shouldClear) {
+        void executeClearOrder();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Limpiar orden',
+      'Se quitarán todos los productos de la cuenta actual. La mesa seguirá abierta para capturar un nuevo pedido.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Limpiar',
+          style: 'destructive',
+          onPress: () => {
+            void executeClearOrder();
+          },
+        },
+      ]
+    );
   };
 
   const handleConfirmCloseAccount = async () => {
@@ -279,7 +421,7 @@ export default function OperationScreen() {
         <StatCard
           label="Venta del día"
           value={formatCurrency(stats.totalSales)}
-          hint={`${sales.length} ventas cerradas`}
+          hint={`${todaySales.length} ventas cerradas`}
           icon={<Ionicons name="wallet-outline" size={18} color={COLORS.text} />}
         />
         <StatCard
@@ -344,13 +486,30 @@ export default function OperationScreen() {
               <View style={styles.listBlock}>
                 {selectedOrder.items.length ? (
                   selectedOrder.items.map((item) => (
-                    <OrderItemCard
-                      key={item.id}
-                      item={item}
-                      actionLabel={item.status === 'ready' ? (busyAction ? 'Actualizando...' : 'Marcar entregado') : undefined}
-                      actionDisabled={busyAction || item.status !== 'ready'}
-                      onPressAction={() => handleMarkServed(item.id)}
-                    />
+                    <View key={item.id} style={styles.orderItemWrap}>
+                      <OrderItemCard
+                        item={item}
+                        actionLabel={item.status === 'ready' ? (busyAction ? 'Actualizando...' : 'Marcar entregado') : undefined}
+                        actionDisabled={busyAction || item.status !== 'ready'}
+                        onPressAction={() => handleMarkServed(item.id)}
+                      />
+                      <View style={styles.itemActionsRow}>
+                        <Pressable
+                          onPress={() => openEditItemModal(item)}
+                          style={[styles.itemActionButton, busyAction && styles.disabledButton]}
+                          disabled={busyAction}
+                        >
+                          <Text style={styles.itemActionButtonText}>Editar</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleRemoveItem(item)}
+                          style={[styles.itemDangerButton, busyAction && styles.disabledButton]}
+                          disabled={busyAction}
+                        >
+                          <Text style={styles.itemDangerButtonText}>Quitar</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                   ))
                 ) : (
                   <EmptyState title="Sin productos" description="Esta cuenta está abierta, pero todavía no tiene productos." />
@@ -364,6 +523,13 @@ export default function OperationScreen() {
                   disabled={busyAction}
                 >
                   <Text style={styles.secondaryButtonText}>{busyAction ? 'Procesando...' : 'Agregar producto'}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleClearOrder}
+                  style={[styles.secondaryButton, styles.flexButton, busyAction && styles.disabledButton]}
+                  disabled={busyAction || !selectedOrder.items.length}
+                >
+                  <Text style={styles.secondaryButtonText}>Limpiar orden</Text>
                 </Pressable>
                 <Pressable
                   onPress={openCloseAccountModal}
@@ -607,6 +773,85 @@ export default function OperationScreen() {
         </View>
       </Modal>
 
+
+      <Modal visible={isEditItemModalVisible} transparent animationType="fade" onRequestClose={closeEditItemModal}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.compactModalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Editar producto</Text>
+                <Text style={styles.modalSubtitle}>{editingItem ? `${editingItem.name} · ${editingItem.station}` : 'Ajusta cantidad y notas'}</Text>
+              </View>
+              <Pressable onPress={closeEditItemModal} style={styles.modalCloseButton} disabled={busyAction}>
+                <Ionicons name="close" size={20} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={styles.fieldBlockCompact}>
+                <Text style={styles.fieldLabel}>Cantidad</Text>
+                <View style={styles.quantityRow}>
+                  <Pressable
+                    onPress={() => setEditQuantityInput(String(Math.max(1, Number(editQuantityInput || '1') - 1)))}
+                    style={styles.quantityButton}
+                    disabled={busyAction}
+                  >
+                    <Ionicons name="remove" size={18} color={COLORS.text} />
+                  </Pressable>
+                  <TextInput
+                    value={editQuantityInput}
+                    onChangeText={setEditQuantityInput}
+                    keyboardType="number-pad"
+                    style={styles.quantityInput}
+                    placeholder="1"
+                    placeholderTextColor={COLORS.textSecondary}
+                  />
+                  <Pressable
+                    onPress={() => setEditQuantityInput(String(Math.max(1, Number(editQuantityInput || '1') + 1)))}
+                    style={styles.quantityButton}
+                    disabled={busyAction}
+                  >
+                    <Ionicons name="add" size={18} color={COLORS.text} />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.fieldBlockCompact}>
+                <Text style={styles.fieldLabel}>Importe estimado</Text>
+                <View style={styles.amountPreview}>
+                  <Text style={styles.amountPreviewText}>
+                    {formatCurrency((editingItem?.price ?? 0) * Math.max(1, Number(editQuantityInput || '1')))}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>Notas</Text>
+              <TextInput
+                value={editNotesInput}
+                onChangeText={setEditNotesInput}
+                placeholder="Ej. sin cebolla, extra queso..."
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.notesInput}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={closeEditItemModal} style={styles.modalSecondaryButton} disabled={busyAction}>
+                <Text style={styles.modalSecondaryButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable onPress={handleSaveEditedItem} style={[styles.modalPrimaryButton, busyAction && styles.disabledButton]} disabled={busyAction}>
+                <Text style={styles.modalPrimaryButtonText}>{busyAction ? 'Guardando...' : 'Guardar cambios'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={isCloseModalVisible} transparent animationType="fade" onRequestClose={closeCloseAccountModal}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -744,6 +989,41 @@ const styles = StyleSheet.create({
   },
   listBlock: {
     gap: 12,
+  },
+
+  orderItemWrap: {
+    gap: 8,
+  },
+  itemActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 8,
+  },
+  itemActionButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  itemActionButtonText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  itemDangerButton: {
+    borderRadius: 999,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  itemDangerButtonText: {
+    color: '#B91C1C',
+    fontSize: 12,
+    fontWeight: '700',
   },
   actionRow: {
     flexDirection: 'row',

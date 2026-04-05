@@ -8,6 +8,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  Timestamp,
   where,
 } from 'firebase/firestore';
 import { COLLECTIONS } from '../constants/collections.js';
@@ -15,6 +16,17 @@ import { db } from '../firebase/client.js';
 
 function mapDocs(snapshot) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+function normalizeDateInput(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  if (typeof value?.seconds === 'number') {
+    return new Date((value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1_000_000));
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export function subscribeToSales(callback) {
@@ -31,7 +43,7 @@ export function subscribeToTodaySales(callback) {
 
   const q = query(
     collection(db, COLLECTIONS.SALES),
-    where('closedAt', '>=', start.toISOString()),
+    where('closedAt', '>=', Timestamp.fromDate(start)),
     orderBy('closedAt', 'desc')
   );
 
@@ -46,14 +58,17 @@ export async function getSaleById(saleId) {
   return { id: snap.id, ...snap.data() };
 }
 
-export async function getSalesByDateRange(startDateIso, endDateIso) {
+export async function getSalesByDateRange(startDateValue, endDateValue) {
   if (!db) return [];
-  if (!startDateIso || !endDateIso) return [];
+
+  const startDate = normalizeDateInput(startDateValue);
+  const endDate = normalizeDateInput(endDateValue);
+  if (!startDate || !endDate) return [];
 
   const q = query(
     collection(db, COLLECTIONS.SALES),
-    where('closedAt', '>=', startDateIso),
-    where('closedAt', '<=', endDateIso),
+    where('closedAt', '>=', Timestamp.fromDate(startDate)),
+    where('closedAt', '<=', Timestamp.fromDate(endDate)),
     orderBy('closedAt', 'desc')
   );
 

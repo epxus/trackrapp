@@ -1,4 +1,4 @@
-import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { COLLECTIONS } from '../constants/collections.js';
 import { ORDER_ITEM_STATUS } from '../constants/statuses.js';
 import { db } from '../firebase/client.js';
@@ -48,6 +48,53 @@ export async function addOrderItem({
         createdAt: new Date().toISOString(),
       },
     ];
+
+    transaction.update(orderRef, {
+      items: nextItems,
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await recalculateOrderTotals(orderId);
+}
+
+export async function updateOrderItem(orderId, itemId, patch = {}) {
+  if (!db) throw new Error('Firestore no está configurado.');
+  if (!orderId) throw new Error('orderId es obligatorio.');
+  if (!itemId) throw new Error('itemId es obligatorio.');
+
+  const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(orderRef);
+
+    if (!snap.exists()) {
+      throw new Error('La orden no existe.');
+    }
+
+    const orderData = snap.data();
+    let found = false;
+
+    const nextItems = (orderData.items ?? []).map((item) => {
+      if (item.id !== itemId) return item;
+      found = true;
+
+      const nextQuantity = patch.quantity == null ? Number(item.quantity ?? 1) : Number(patch.quantity);
+      if (!Number.isFinite(nextQuantity) || nextQuantity < 1) {
+        throw new Error('La cantidad debe ser mayor o igual a 1.');
+      }
+
+      return {
+        ...item,
+        quantity: nextQuantity,
+        notes: patch.notes == null ? normalizeNotes(item.notes) : normalizeNotes(patch.notes),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    if (!found) {
+      throw new Error('El producto de la orden no existe.');
+    }
 
     transaction.update(orderRef, {
       items: nextItems,
@@ -111,6 +158,28 @@ export async function removeOrderItem(orderId, itemId) {
 
     transaction.update(orderRef, {
       items: nextItems,
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await recalculateOrderTotals(orderId);
+}
+
+export async function clearOrderItems(orderId) {
+  if (!db) throw new Error('Firestore no está configurado.');
+  if (!orderId) throw new Error('orderId es obligatorio.');
+
+  const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(orderRef);
+
+    if (!snap.exists()) {
+      throw new Error('La orden no existe.');
+    }
+
+    transaction.update(orderRef, {
+      items: [],
       updatedAt: serverTimestamp(),
     });
   });
